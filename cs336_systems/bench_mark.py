@@ -34,25 +34,30 @@ optimizer_time = []
 for i in range(3):
     start = time.time()
     nvtx.range_push("Forward")
-    output = model(sample_input)
-    torch.cuda.synchronize() # Wait for GPU to finish
+    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        output = model(sample_input)
     nvtx.range_pop()
+    torch.cuda.synchronize() # Wait for GPU to finish
+    
     forward_stone = time.time()
     forward_time.append(forward_stone - start)
     start_backward = time.time()
     nvtx.range_push("Backward")
-    simulate_loss = cross_entropy(output, sample_input)
     optimizer.zero_grad()
-    simulate_loss.backward()
-    torch.cuda.synchronize() # Wait for GPU to finish
+    with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+        simulate_loss = cross_entropy(output, sample_input)
+        simulate_loss.backward()
     nvtx.range_pop()
+    torch.cuda.synchronize() # Wait for GPU to finish
+    
     backward_stone = time.time()
     backward_time.append(backward_stone - start_backward) 
     optimizer_start = time.time()
     nvtx.range_push("Optimization")
     optimizer.step()
-    torch.cuda.synchronize() # Wait for GPU to finish
     nvtx.range_pop()
+    torch.cuda.synchronize() # Wait for GPU to finish
+    
     optimizer_stone = time.time()
     optimizer_time.append(optimizer_stone - optimizer_start)
 print(f"Average forward time: {sum(forward_time)/len(forward_time):.4f} seconds")
