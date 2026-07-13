@@ -111,8 +111,6 @@ def flash_fwd_kernel(
     q = tl.load(Q_block_ptr)
     offs_q = query_tile_index * Q_TILE_SIZE + tl.arange(0, Q_TILE_SIZE)
     for j in range(0, tl.cdiv(N_KEYS, K_TILE_SIZE)):
-        if is_causal and (j * K_TILE_SIZE) > query_tile_index * Q_TILE_SIZE + Q_TILE_SIZE -1:
-            break
         k_j = tl.load(K_block_ptr)
         v_j = tl.load(V_block_ptr)
         attn_scores = tl.dot(q, tl.trans(k_j)) * scale
