@@ -16,18 +16,19 @@ model_config = ModelConfig(
 )
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = TransformerLM(model_config).to(device)
-optimizer = AdamW(model.parameters(), lr=1e-4, betas=(0.9, 0.95), eps=1e-8, weight_decay=0.1)
+compiled_model = torch.compile(model)
+optimizer = AdamW(compiled_model.parameters(), lr=1e-4, betas=(0.9, 0.95), eps=1e-8, weight_decay=0.1)
 
 batch_size = 4
 max_seq_len = 512
 sample_input = torch.randint(0, model_config.vocab_size, (batch_size, max_seq_len), device=device)
 
-model.eval()
+compiled_model.eval()
 with torch.no_grad():
-    output = model(sample_input)
+    output = compiled_model(sample_input)
     torch.cuda.synchronize()
 
-model.train()
+compiled_model.train()
 forward_time = []
 backward_time = []
 optimizer_time = []
@@ -35,7 +36,7 @@ for i in range(3):
     start = time.time()
     nvtx.range_push("Forward")
     with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-        output = model(sample_input)
+        output = compiled_model(sample_input)
     nvtx.range_pop()
     torch.cuda.synchronize() # Wait for GPU to finish
     
