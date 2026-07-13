@@ -58,6 +58,7 @@ def flash_fwd_kernel(
     D: tl.constexpr,
     Q_TILE_SIZE: tl.constexpr,
     K_TILE_SIZE: tl.constexpr,
+    is_causal: tl.constexpr,
 ):
     # Program indices
     query_tile_index = tl.program_id(0)
@@ -108,10 +109,15 @@ def flash_fwd_kernel(
     l_i = tl.zeros((Q_TILE_SIZE,), dtype=tl.float32)
     o_i = tl.zeros((Q_TILE_SIZE, D), dtype=tl.float32)
     q = tl.load(Q_block_ptr)
+    offs_q = query_tile_index * Q_TILE_SIZE + tl.arange(0, Q_TILE_SIZE)
     for j in range(0, tl.cdiv(N_KEYS, K_TILE_SIZE)):
         k_j = tl.load(K_block_ptr)
         v_j = tl.load(V_block_ptr)
         attn_scores = tl.dot(q, tl.trans(k_j)) * scale
+        if is_causal:
+            offs_k = j * K_TILE_SIZE + tl.arange(0, K_TILE_SIZE)
+            mask = offs_q[:, None] >= offs_k[None, :]
+            attn_scores = tl.where(mask, attn_scores, -1e6)
         m_i_new = tl.maximum(tl.max(attn_scores, axis=1), m_i)
         p_i = tl.exp(attn_scores - m_i_new[:, None])
         l_i_new = tl.exp(m_i - m_i_new) * l_i + tl.sum(p_i, axis=1)
@@ -148,10 +154,11 @@ class MyTritonFlashAttentionAutogradFunctionClass(torch.autograd.Function):
         1/np.sqrt(Q.shape[2]),
         D=Q.shape[2],
         Q_TILE_SIZE=q_tile_size,
-        K_TILE_SIZE=k_tile_size)
+        K_TILE_SIZE=k_tile_size,
+        is_causal=is_causal)
 
         ctx.save_for_backward(Q, K, V, o, l)
-
+        return o 
 
         
             
